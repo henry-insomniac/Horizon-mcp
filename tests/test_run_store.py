@@ -73,3 +73,16 @@ def test_missing_artifact_raises(tmp_path: Path) -> None:
 
     with pytest.raises(FileNotFoundError, match="Artifact not found"):
         store.read_json(run_id, "does-not-exist.json")
+
+
+def test_list_runs_returns_desc_order(tmp_path: Path) -> None:
+    store = RunStore(tmp_path)
+    run1 = store.create_run("run-1")
+    store.update_meta(run1, {"seq": 1})
+    run2 = store.create_run("run-2")
+    store.update_meta(run2, {"seq": 2})
+
+    runs = store.list_runs(limit=10)
+
+    assert runs[0]["run_id"] == "run-2"
+    assert runs[1]["run_id"] == "run-1"

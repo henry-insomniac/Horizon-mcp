@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "horizon": {
+      "command": "python3",
+      "args": ["-m", "horizon_mcp.server"],
+      "cwd": "/Users/Zhuanz/work-space/Horizon-mcp",
+      "env": {
+        "HORIZON_PATH": "/Users/Zhuanz/work-space/Horizon"
+      }
+    }
+  }
+}

@@ -73,6 +73,35 @@ class RunStore:
     def load_meta(self, run_id: str) -> dict[str, Any]:
         return self.read_json(run_id, "meta.json")
 
+    def list_runs(self, limit: int = 20) -> list[dict[str, Any]]:
+        """List runs sorted by create/update time descending."""
+
+        entries: list[dict[str, Any]] = []
+        for run_dir in self.root.iterdir():
+            if not run_dir.is_dir():
+                continue
+            meta_path = run_dir / "meta.json"
+            if not meta_path.exists():
+                continue
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+
+            created = meta.get("created_at") or ""
+            updated = meta.get("updated_at") or created
+            entries.append(
+                {
+                    "run_id": meta.get("run_id", run_dir.name),
+                    "created_at": created,
+                    "updated_at": updated,
+                    "meta": meta,
+                }
+            )
+
+        entries.sort(key=lambda x: x["updated_at"] or x["created_at"], reverse=True)
+        return entries[: max(0, limit)]
+
     def write_json(self, run_id: str, filename: str, payload: Any) -> Path:
         path = self.run_dir(run_id) / filename
         path.write_text(

@@ -41,6 +41,111 @@ class HorizonPipelineService:
     def __init__(self, runs_root: Path | None = None):
         self.run_store = RunStore(runs_root or (Path.cwd() / "data" / "mcp-runs"))
 
+    def list_runs(self, limit: int = 20) -> dict[str, Any]:
+        """List recent runs and stage availability."""
+
+        runs = self.run_store.list_runs(limit=limit)
+        items = []
+        for run in runs:
+            run_id = run["run_id"]
+            stages = {}
+            for stage in ("raw", "scored", "filtered", "enriched"):
+                stages[stage] = self.run_store.has_stage(run_id, stage)
+            items.append(
+                {
+                    "run_id": run_id,
+                    "created_at": run.get("created_at"),
+                    "updated_at": run.get("updated_at"),
+                    "stages": stages,
+                    "meta": run.get("meta", {}),
+                }
+            )
+        return {"count": len(items), "items": items}
+
+    def get_run_meta(self, run_id: str) -> dict[str, Any]:
+        """Read run metadata."""
+
+        try:
+            meta = self.run_store.load_meta(run_id)
+        except FileNotFoundError as exc:
+            raise HorizonMcpError(
+                code="HZ_RUN_NOT_FOUND",
+                message=f"run_id={run_id} 不存在。",
+                details={"run_id": run_id},
+            ) from exc
+        return {"run_id": run_id, "meta": meta}
+
+    def get_run_stage(
+        self,
+        run_id: str,
+        stage: str,
+        max_items: int = 200,
+    ) -> dict[str, Any]:
+        """Read staged item payload (JSON)."""
+
+        if max_items <= 0:
+            raise HorizonMcpError(code="HZ_INVALID_INPUT", message="max_items 必须大于 0。")
+        try:
+            items = self.run_store.load_items(run_id, stage)
+        except ValueError as exc:
+            raise HorizonMcpError(
+                code="HZ_INVALID_STAGE",
+                message=str(exc),
+                details={"stage": stage},
+            ) from exc
+        except FileNotFoundError as exc:
+            raise HorizonMcpError(
+                code="HZ_STAGE_NOT_FOUND",
+                message=f"run_id={run_id} 缺少阶段产物: {stage}",
+                details={"run_id": run_id, "stage": stage},
+            ) from exc
+
+        return {
+            "run_id": run_id,
+            "stage": stage,
+            "count": len(items),
+            "items": items[:max_items],
+            "truncated": len(items) > max_items,
+        }
+
+    def get_run_summary(self, run_id: str, language: str = "zh") -> dict[str, Any]:
+        """Read generated markdown summary for a run."""
+
+        try:
+            markdown = self.run_store.load_summary(run_id, language)
+        except FileNotFoundError as exc:
+            raise HorizonMcpError(
+                code="HZ_SUMMARY_NOT_FOUND",
+                message=f"run_id={run_id} 未找到 language={language} 的摘要。",
+                details={"run_id": run_id, "language": language},
+            ) from exc
+        return {
+            "run_id": run_id,
+            "language": language,
+            "summary": markdown,
+        }
+
+    def get_effective_config(
+        self,
+        horizon_path: str | None = None,
+        config_path: str | None = None,
+        sources: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Return effective config after optional source filtering."""
+
+        ctx, selected_sources, unknown_sources = self._build_context(
+            horizon_path=horizon_path,
+            config_path=config_path,
+            sources=sources,
+        )
+        return {
+            "horizon_path": str(ctx.horizon_path),
+            "config_path": str(ctx.config_path),
+            "selected_sources": selected_sources,
+            "unknown_sources": unknown_sources,
+            "config": ctx.config.model_dump(mode="json"),
+        }
+
     async def validate_config(
         self,
         horizon_path: str | None = None,
