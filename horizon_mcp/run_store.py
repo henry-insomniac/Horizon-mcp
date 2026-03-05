@@ -1,0 +1,104 @@
+"""Run artifact persistence for Horizon MCP."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+
+STAGES = {
+    "raw": "raw_items.json",
+    "scored": "scored_items.json",
+    "filtered": "filtered_items.json",
+    "enriched": "enriched_items.json",
+}
+
+
+@dataclass
+class RunStore:
+    """Store intermediate artifacts per pipeline run."""
+
+    root: Path
+
+    def __post_init__(self) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+
+    def create_run(self, run_id: str | None = None) -> str:
+        run_id = run_id or self._make_run_id()
+        run_dir = self.root / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        meta_path = run_dir / "meta.json"
+        if not meta_path.exists():
+            self.write_json(run_id, "meta.json", {"run_id": run_id, "created_at": self._utc_now()})
+        return run_id
+
+    def run_dir(self, run_id: str) -> Path:
+        path = self.root / run_id
+        if not path.exists():
+            raise FileNotFoundError(f"Run not found: {run_id}")
+        return path
+
+    def has_stage(self, run_id: str, stage: str) -> bool:
+        return (self.run_dir(run_id) / self._stage_file(stage)).exists()
+
+    def save_items(self, run_id: str, stage: str, items: list[dict[str, Any]]) -> Path:
+        return self.write_json(run_id, self._stage_file(stage), items)
+
+    def load_items(self, run_id: str, stage: str) -> list[dict[str, Any]]:
+        return self.read_json(run_id, self._stage_file(stage))
+
+    def save_summary(self, run_id: str, language: str, markdown: str) -> Path:
+        filename = f"summary-{language}.md"
+        path = self.run_dir(run_id) / filename
+        path.write_text(markdown, encoding="utf-8")
+        return path
+
+    def load_summary(self, run_id: str, language: str) -> str:
+        path = self.run_dir(run_id) / f"summary-{language}.md"
+        if not path.exists():
+            raise FileNotFoundError(f"Summary not found: run={run_id} lang={language}")
+        return path.read_text(encoding="utf-8")
+
+    def update_meta(self, run_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+        meta = self.read_json(run_id, "meta.json")
+        meta.update(updates)
+        meta["updated_at"] = self._utc_now()
+        self.write_json(run_id, "meta.json", meta)
+        return meta
+
+    def load_meta(self, run_id: str) -> dict[str, Any]:
+        return self.read_json(run_id, "meta.json")
+
+    def write_json(self, run_id: str, filename: str, payload: Any) -> Path:
+        path = self.run_dir(run_id) / filename
+        path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return path
+
+    def read_json(self, run_id: str, filename: str) -> Any:
+        path = self.run_dir(run_id) / filename
+        if not path.exists():
+            raise FileNotFoundError(f"Artifact not found: run={run_id} file={filename}")
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    @staticmethod
+    def _stage_file(stage: str) -> str:
+        if stage not in STAGES:
+            supported = ", ".join(sorted(STAGES))
+            raise ValueError(f"Unsupported stage '{stage}', expected one of: {supported}")
+        return STAGES[stage]
+
+    @staticmethod
+    def _make_run_id() -> str:
+        now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        return f"run-{now}-{uuid4().hex[:8]}"
+
+    @staticmethod
+    def _utc_now() -> str:
+        return datetime.now(timezone.utc).isoformat()
