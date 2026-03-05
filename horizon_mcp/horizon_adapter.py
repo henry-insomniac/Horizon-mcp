@@ -16,6 +16,7 @@ from .errors import HorizonMcpError
 
 
 VALID_SOURCES = {"github", "hackernews", "rss", "reddit", "telegram"}
+SUPPORTED_SECRET_KEYS = {"OPENAI_API_KEY", "GITHUB_TOKEN"}
 
 
 @dataclass
@@ -101,6 +102,7 @@ def load_runtime(horizon_path: Path) -> HorizonRuntime:
         )
 
     load_dotenv(horizon_path / ".env", override=False)
+    _load_mcp_secrets(horizon_path, override=False)
 
     horizon_path_str = str(horizon_path)
     if horizon_path_str not in sys.path:
@@ -232,3 +234,94 @@ def get_source_counts(items: list[Any]) -> dict[str, int]:
 
 def _is_horizon_repo(path: Path) -> bool:
     return (path / "src" / "main.py").exists() and (path / "pyproject.toml").exists()
+
+
+def _load_mcp_secrets(horizon_path: Path, override: bool = False) -> None:
+    """Load MCP secrets from JSON and inject selected env vars.
+
+    Supported file format:
+    {
+      "OPENAI_API_KEY": "...",
+      "GITHUB_TOKEN": "..."
+    }
+    or:
+    {
+      "env": {
+        "OPENAI_API_KEY": "...",
+        "GITHUB_TOKEN": "..."
+      }
+    }
+    """
+
+    secrets_path = _resolve_secrets_path(horizon_path)
+    if not secrets_path:
+        return
+
+    try:
+        payload = json.loads(secrets_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise HorizonMcpError(
+            code="HZ_SECRETS_INVALID",
+            message="MCP secrets 配置文件解析失败。",
+            details={"secrets_path": str(secrets_path), "error": str(exc)},
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise HorizonMcpError(
+            code="HZ_SECRETS_INVALID",
+            message="MCP secrets 配置文件必须是 JSON 对象。",
+            details={"secrets_path": str(secrets_path)},
+        )
+
+    env_payload = payload.get("env", payload)
+    if not isinstance(env_payload, dict):
+        raise HorizonMcpError(
+            code="HZ_SECRETS_INVALID",
+            message="MCP secrets 的 env 字段必须是对象。",
+            details={"secrets_path": str(secrets_path)},
+        )
+
+    for key in SUPPORTED_SECRET_KEYS:
+        value = env_payload.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            raise HorizonMcpError(
+                code="HZ_SECRETS_INVALID",
+                message=f"MCP secrets 中 {key} 必须是字符串。",
+                details={"secrets_path": str(secrets_path), "key": key},
+            )
+        if value.strip() == "":
+            continue
+        if override or not os.getenv(key):
+            os.environ[key] = value
+
+
+def _resolve_secrets_path(horizon_path: Path) -> Path | None:
+    """Resolve secrets config path via env and common locations."""
+
+    explicit = os.getenv("HORIZON_MCP_SECRETS_PATH")
+    if explicit:
+        explicit_path = Path(explicit).expanduser().resolve()
+        if explicit_path.exists():
+            return explicit_path
+        raise HorizonMcpError(
+            code="HZ_SECRETS_NOT_FOUND",
+            message="HORIZON_MCP_SECRETS_PATH 指向的文件不存在。",
+            details={"secrets_path": str(explicit_path)},
+        )
+
+    cwd = Path.cwd()
+    candidates = [
+        cwd / ".cursor" / "mcp.secrets.json",
+        cwd / ".cursor" / "mcp.secrets.local.json",
+        cwd / "config" / "mcp.secrets.json",
+        cwd / "config" / "mcp.secrets.local.json",
+        horizon_path / "data" / "mcp.secrets.json",
+        horizon_path / "data" / "mcp-secrets.json",
+    ]
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved.exists():
+            return resolved
+    return None

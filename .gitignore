@@ -15,3 +15,7 @@ dist/
 build/
 *.egg-info/
 data/mcp-runs/
+.cursor/mcp.secrets.json
+.cursor/mcp.secrets.local.json
+config/mcp.secrets.json
+config/mcp.secrets.local.json

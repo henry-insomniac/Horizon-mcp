@@ -8,18 +8,18 @@
 
 ### 工具（Tools）
 
-- `hz_validate_config`
-- `hz_fetch_items`
-- `hz_score_items`
-- `hz_filter_items`
-- `hz_enrich_items`
-- `hz_generate_summary`
-- `hz_run_pipeline`
-- `hz_list_runs`
-- `hz_get_run_meta`
-- `hz_get_run_stage`
-- `hz_get_run_summary`
-- `hz_get_metrics`
+- `hz_validate_config`：校验 Horizon 配置有效性与关键环境变量是否齐全。
+- `hz_fetch_items`：抓取并去重新闻内容，写入 `raw` 阶段。
+- `hz_score_items`：调用 AI 对指定阶段内容打分，写入 `scored` 阶段。
+- `hz_filter_items`：按分数阈值过滤并做主题去重，写入 `filtered` 阶段。
+- `hz_enrich_items`：对高分内容执行背景富化，写入 `enriched` 阶段。
+- `hz_generate_summary`：从指定阶段内容生成 Markdown 摘要。
+- `hz_run_pipeline`：一键执行抓取、打分、过滤、富化、摘要全流程。
+- `hz_list_runs`：列出最近 run 记录及各阶段产物状态。
+- `hz_get_run_meta`：读取指定 run 的元数据。
+- `hz_get_run_stage`：读取指定 run 的阶段内容（raw/scored/filtered/enriched）。
+- `hz_get_run_summary`：读取指定 run 的摘要内容。
+- `hz_get_metrics`：读取服务内存指标与调用统计。
 
 ### 资源（Resources）
 
@@ -42,6 +42,34 @@
 - `/tmp/Horizon`
 
 3. Horizon 配置文件存在：`<horizon_path>/data/config.json`
+
+4. （可选）MCP 密钥配置文件（避免手动 export）：
+- `.cursor/mcp.secrets.json`
+- `.cursor/mcp.secrets.local.json`
+- `config/mcp.secrets.json`
+- `config/mcp.secrets.local.json`
+- `<horizon_path>/data/mcp.secrets.json`
+- `<horizon_path>/data/mcp-secrets.json`
+
+支持字段：
+
+```json
+{
+  "OPENAI_API_KEY": "sk-xxxx",
+  "GITHUB_TOKEN": "ghp_xxxx"
+}
+```
+
+也支持嵌套写法：
+
+```json
+{
+  "env": {
+    "OPENAI_API_KEY": "sk-xxxx",
+    "GITHUB_TOKEN": "ghp_xxxx"
+  }
+}
+```
 
 ## 3. 安装与启动
 

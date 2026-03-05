@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "horizon": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--no-project",
+        "--python",
+        "3.11",
+        "--with",
+        "mcp",
+        "--with",
+        "python-dotenv",
+        "python",
+        "-m",
+        "horizon_mcp.server"
+      ],
+      "cwd": "/Users/Zhuanz/work-space/Horizon-mcp",
+      "env": {
+        "HORIZON_PATH": "/Users/Zhuanz/work-space/Horizon"
+      }
+    }
+  }
+}
